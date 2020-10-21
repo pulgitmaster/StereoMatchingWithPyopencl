@@ -172,15 +172,20 @@ if __name__ == '__main__' :
 
     # get depth
     dispRange = 64
-    with_cost = True
+    with_cost = False
     st_time = time.time()
-    depth, cost = abs_diff.get_depth(
+    result = abs_diff.get_depth(
         left_img,
         right_img,
         dispRange=dispRange,
         thread_num=None,
         wta_thread_num=None,
         host_mem=with_cost)
+
+    if with_cost:
+        depth, cost = result
+    else:
+        depth = result
 
     # error
     print("BP error : {:.4f}".format(BP(depth[:, dispRange:], gt[:, dispRange:] / 4, 4.0)))  # BP 4pixel rate
