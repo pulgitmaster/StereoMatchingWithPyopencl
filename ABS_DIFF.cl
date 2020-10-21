@@ -23,7 +23,7 @@ __kernel void get_cost(
     int2 tgt_pos = (int2)(col, row);
 	int2 src_pos = (int2)(col - depth, row);
     float4 diff = fabs(read_imagef(tgt, sampler, tgt_pos) - read_imagef(src, sampler, src_pos));
-    cost[idx] = (diff.x + diff.y + diff.z);
+    cost[idx] = (diff.x + diff.y + diff.z) / 3;
 }
 
 /************************************ winner takes all ************************************/

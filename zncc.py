@@ -68,9 +68,6 @@ class ZNCC():
             mean_thread_num = (zncc_thread_num[0], zncc_thread_num[1])
         std_thread_num = mean_thread_num
         
-        # output
-        costvolume = np.zeros((h, w, dispRange), dtype=np.float32) # main output
-
         #### numpy to cl::Image2D memory parsing
         ctx = self.ctx
         left_image2D = cl.Image(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, fmt, shape=(w, h), hostbuf=left_img)
@@ -118,18 +115,18 @@ class ZNCC():
         ).wait()
 
         if host_mem:
+            costvolume = np.zeros((h, w, dispRange), dtype=np.float32) # host memory
             cl.enqueue_copy(queue, costvolume, cost_buffer, is_blocking=True)
-            return costvolume
+            return cost_buffer, costvolume
         else:
             return cost_buffer
 
-    def get_depth(self, left_img, right_img, kernel_size=5, dispRange=64, zncc_thread_num=(16, 16, 4), wta_thread_num=(16, 16)):
+    def get_depth(self, left_img, right_img, kernel_size=5, dispRange=64, zncc_thread_num=(16, 16, 4), wta_thread_num=(16, 16), host_mem=False):
         # arguments
         h = left_img.shape[0]
         w = left_img.shape[1]
         var_height = np.int32(h)
         var_width = np.int32(w)
-        var_ksize = np.int32(kernel_size)
         var_dispRange = np.int32(dispRange)
         
         if wta_thread_num is not None:
@@ -137,7 +134,6 @@ class ZNCC():
 
         # output
         result = np.zeros((h, w), dtype=np.uint8) # main output
-        costvolume = np.zeros((h, w, dispRange), dtype=np.float32) # sub output
 
         # device memory -- output
         ctx = self.ctx
@@ -145,14 +141,19 @@ class ZNCC():
         result_buffer = cl.Buffer(ctx, mf.WRITE_ONLY, size=w*h) # cl.uchar(=np.uint8)
 
         #### get cost
-        cost_buffer = self.get_costvolume(
+        cost_results = self.get_costvolume(
             left_img,
             right_img,
             kernel_size=kernel_size,
             dispRange=dispRange,
             zncc_thread_num=zncc_thread_num,
-            host_mem=False
+            host_mem=host_mem
         )
+        if host_mem:
+            cost_buffer = cost_results[0]
+            costvolume = cost_results[1]
+        else:
+            cost_buffer = cost_results
 
         queue = self.queue
         #### wta
@@ -166,8 +167,11 @@ class ZNCC():
             var_dispRange
         ).wait()
         cl.enqueue_copy(queue, result, result_buffer, is_blocking=True)
-        cl.enqueue_copy(queue, costvolume, cost_buffer, is_blocking=True)
-        return result, costvolume
+
+        if host_mem:
+            return result, costvolume
+        else:
+            return result
 
 if __name__ == '__main__' :
     """
@@ -200,31 +204,40 @@ if __name__ == '__main__' :
 
     # get depth
     dispRange = 64
-    depth, cost = zncc.get_depth(
+    with_cost = False
+    st_time = time.time()
+    result = zncc.get_depth(
         left_img,
         right_img,
-        kernel_size=7,
+        kernel_size=5,
         dispRange=dispRange,
         zncc_thread_num=None,
-        wta_thread_num=None)
+        wta_thread_num=None,
+        host_mem=with_cost)
+    
+    if with_cost:
+        depth, cost = result
+    else:
+        depth = result
 
     # error
-    ds_factor = 4 # depth scaling factor, see upper doc
-    print("BP error : {:.4f}".format(BP(depth*ds_factor, gt, 4 * ds_factor)))  # BP 4pixel rate
-    print("MSE : {:.4f}".format(MSE(depth*ds_factor, gt)))
+    print("BP error : {:.4f}".format(BP(depth[:, dispRange:], gt[:, dispRange:] / 4, 4.0)))  # BP 4pixel rate
+    print("MSE : {:.4f}".format(MSE(depth[:, dispRange:], gt[:, dispRange:] / 4)))
+    print("Elapsed : {:.3f}ms".format(1000 * (time.time() - st_time)))
 
     fig, axs = plt.subplots(1, 4)
     axs[0].imshow(cv2.cvtColor(left_img.astype(np.uint8), cv2.COLOR_BGR2RGB))
     axs[1].imshow(cv2.cvtColor(right_img.astype(np.uint8), cv2.COLOR_BGR2RGB))
-    axs[2].imshow(depth*ds_factor, cmap='gray')
-    axs[3].imshow(gt, cmap='gray')
+    axs[2].imshow(depth, cmap='gray')
+    axs[3].imshow(gt / 4, cmap='gray')
     #plt.show()
 
-    fig2, axs2 = plt.subplots(8, 8)
-    cnt = 0
-    for row in range(8):
-        for col in range(8):
-            axs2[row, col].imshow(cost[:, :, cnt], cmap='gray')
-            cnt += 1
+    if with_cost:
+        fig2, axs2 = plt.subplots(8, 8)
+        cnt = 0
+        for row in range(8):
+            for col in range(8):
+                axs2[row, col].imshow(cost[:, :, cnt], cmap='gray')
+                cnt += 1
     plt.show()
 

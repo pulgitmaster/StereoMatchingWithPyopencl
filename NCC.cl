@@ -66,7 +66,7 @@ __kernel void get_cost(
             tmpC += (B_ * B_);
         }
     float4 tmp = tmpA / sqrt(tmpB * tmpC);
-    cost[idx] = tmp.x + tmp.y + tmp.z;
+    cost[idx] = (tmp.x + tmp.y + tmp.z) / 3;
 }
 
 /************************************ winner takes all ************************************/

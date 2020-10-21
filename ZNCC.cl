@@ -98,7 +98,8 @@ __kernel void get_cost(
             tmp += (A_ * B_) / ( read_imagef(src_std, sampler, src_pos) * read_imagef(tgt_std, sampler, tgt_pos) + (float4)(1e-47));
         }
     tmp /= (float4)(kernel_size * kernel_size);
-    cost[idx] = tmp.x + tmp.y + tmp.z;
+    //cost[idx] = tmp.x + tmp.y + tmp.z;
+    cost[idx] = dot(tmp, (float4)1.f) / 3.f;
 }
 
 /************************************ winner takes all ************************************/
